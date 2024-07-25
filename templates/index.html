@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Job Search</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <form id="job-form">
+        Từ khóa công việc: <input type="text" name="keyword">
+        <input type="submit" value="Tìm kiếm">
+    </form>
+    <br>
+    <div id="log-container">
+        <div id="log" style="max-height: 150px; overflow-y: auto;"></div>
+    </div>
+    <button id="toggle-log" class="icon-button"><i class="fas fa-eye"></i></button>
+
+    <div id="jobs-container" class="container">
+        <div id="job-list" class="column"></div>
+        <div id="job-details" class="column"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</body>
+</html>

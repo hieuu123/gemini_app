@@ -1,0 +1,59 @@
+#log-container {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 300px;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 10px;
+    background-color: white;
+    display: none;
+}
+
+.icon-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    padding: 5px;
+    margin: 5px;
+}
+
+#toggle-log {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px;
+    cursor: pointer;
+}
+
+.container {
+    display: flex;
+    height: 80vh;
+}
+
+.column {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+}
+
+.job-item {
+    border-bottom: 1px solid #ddd;
+    padding: 10px 0;
+    cursor: pointer;
+}
+
+.job-item:hover {
+    background-color: #f0f0f0;
+}
+
+.job-item.selected {
+    background-color: #b6b2b2;
+    color: black;
+}
