@@ -3,7 +3,7 @@
     bottom: 0;
     right: 0;
     width: 300px;
-    max-height: 400px;
+    max-height: 300px;
     overflow-y: auto;
     border: 1px solid #ccc;
     padding: 10px;

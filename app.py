@@ -1,3 +1,5 @@
+# Không hiển thị thông tin job + xử lí duy nhất job 1 thời điểm
+
 from flask import Flask, request, render_template, Response, jsonify
 import requests
 from bs4 import BeautifulSoup
@@ -12,9 +14,9 @@ import json
 app = Flask(__name__)
 
 log_messages = []  # Danh sách lưu trữ log
-job_messages = []  # Danh sách lưu trữ các công việc mới
 reset_flag = threading.Event()  # Cờ để reset quá trình xử lý
-processing_flag = threading.Event()  # Cờ để kiểm soát quá trình xử lý
+processing_thread = None  # Biến để theo dõi luồng xử lý hiện tại
+retry_count = 0  # Biến đếm số lần retry
 
 # Kết nối cơ sở dữ liệu MySQL
 def connect_db():
@@ -31,10 +33,6 @@ def connect_db():
 def send_log(message):
     print(message)  # In ra terminal để kiểm tra
     log_messages.append(message)  # Lưu log vào danh sách
-
-# Hàm gửi thông tin công việc mới tới client
-def send_job(message):
-    job_messages.append(message)
 
 # Hàm lấy job_id từ từ khóa
 def get_job_ids(keyword):
@@ -137,6 +135,14 @@ def save_job_to_db(job_details, keyword):
     connection = connect_db()
     try:
         with connection.cursor() as cursor:
+            # Kiểm tra nếu job_id đã tồn tại, xóa hàng cũ
+            check_sql = "SELECT job_id FROM jobs WHERE job_id=%s"
+            cursor.execute(check_sql, (job_details.get('job_id'),))
+            result = cursor.fetchone()
+            if result:
+                delete_sql = "DELETE FROM jobs WHERE job_id=%s"
+                cursor.execute(delete_sql, (job_details.get('job_id'),))
+
             sql = """
             INSERT INTO jobs 
             (job_id, title, company_name, posted_time, num_applicants, seniority_level, employment_type, job_function, industries, place, job_description, submit_time, keyword) 
@@ -158,7 +164,6 @@ def save_job_to_db(job_details, keyword):
                 keyword
             ))
         connection.commit()
-        send_job(job_details)  # Gửi thông tin công việc mới tới client
     finally:
         connection.close()
 
@@ -168,40 +173,58 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def search():
+    global processing_thread, retry_count
     data = request.get_json()
     keyword = data.get('keyword')
 
     # Dừng quá trình xử lý từ khóa hiện tại nếu có
     reset_flag.set()
-    time.sleep(1)  # Đợi một khoảng thời gian ngắn để đảm bảo tất cả các luồng xử lý hiện tại đã dừng
+    if processing_thread is not None:
+        processing_thread.join()  # Chờ cho luồng xử lý hiện tại kết thúc
 
     reset_flag.clear()  # Xóa cờ reset
 
     # Reset log và công việc hiện tại
     log_messages.clear()
-    job_messages.clear()
+    retry_count = 0  # Reset biến đếm khi bắt đầu tìm kiếm mới
 
-    job_ids = get_job_ids(keyword)
-    send_log(f"Đã lấy được {len(job_ids)} job id")
+    def search_and_process_jobs():
+        global retry_count
 
-    vn_timezone = pytz.timezone('Asia/Ho_Chi_Minh')
-    submit_time = datetime.datetime.now(vn_timezone).strftime('%Y-%m-%d %H:%M')
-
-    # Bắt đầu xử lý job IDs trong một luồng riêng
-    def process_jobs():
-        for index, job_id in enumerate(job_ids, start=1):
-            if reset_flag.is_set():
-                send_log("Quá trình xử lý đã bị hủy.")
+        while retry_count < 3:
+            job_ids = get_job_ids(keyword)
+            if job_ids:
+                send_log(f"Đã lấy được {len(job_ids)} job id")
                 break
-            send_log(f"Đang xử lý job id {index}/{len(job_ids)}: {job_id}")
-            job_details = get_job_details(job_id)
-            if job_details:
-                job_details['job_id'] = job_id
-                job_details['submit_time'] = submit_time
-                save_job_to_db(job_details, keyword)
-        send_log("Đã lưu thông tin các công việc vào cơ sở dữ liệu.")
+            else:
+                retry_count += 1
+                send_log(f"Không tìm thấy job id nào, thử lại lần {retry_count}")
+                time.sleep(1)
 
-    processing_thread = threading.Thread(target=process_jobs)
+        if not job_ids:
+            send_log("Không tìm thấy công việc nào sau 3 lần thử.")
+            return
+
+        vn_timezone = pytz.timezone('Asia/Ho_Chi_Minh')
+        submit_time = datetime.datetime.now(vn_timezone).strftime('%Y-%m-%d %H:%M')
+
+        # Bắt đầu xử lý job IDs trong một luồng riêng
+        def process_jobs():
+            for index, job_id in enumerate(job_ids, start=1):
+                if reset_flag.is_set():
+                    send_log("Quá trình xử lý đã bị hủy.")
+                    break
+                send_log(f"Đang xử lý job id {index}/{len(job_ids)}: {job_id}")
+                job_details = get_job_details(job_id)
+                if job_details:
+                    job_details['job_id'] = job_id
+                    job_details['submit_time'] = submit_time
+                    save_job_to_db(job_details, keyword)
+            send_log("Đã lưu thông tin các công việc vào cơ sở dữ liệu.")
+
+        process_jobs()
+
+    processing_thread = threading.Thread(target=search_and_process_jobs)
     processing_thread.start()
 
     return jsonify({"message": "Đã bắt đầu xử lý các công việc."})
@@ -213,23 +236,8 @@ def stream():
             if log_messages:
                 message = log_messages.pop(0)
                 yield f'data: {message}\n\n'
-            if job_messages:
-                job = job_messages.pop(0)
-                yield f'data: new_job:{json.dumps(job, default=str)}\n\n'
             time.sleep(0.1)  # Giảm thời gian chờ xuống 0.1 giây
     return Response(event_stream(), content_type='text/event-stream')
-
-@app.route('/job/<job_id>')
-def job(job_id):
-    connection = connect_db()
-    try:
-        with connection.cursor() as cursor:
-            sql = "SELECT * FROM jobs WHERE job_id=%s"
-            cursor.execute(sql, (job_id,))
-            job = cursor.fetchone()
-        return jsonify(job)
-    finally:
-        connection.close()
 
 if __name__ == '__main__':
     app.run(debug=True)
