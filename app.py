@@ -1,4 +1,5 @@
 # Không hiển thị thông tin job + xử lí duy nhất job 1 thời điểm
+# Update số lần retry thành 5
 
 from flask import Flask, request, render_template, Response, jsonify
 import requests
@@ -191,7 +192,7 @@ def search():
     def search_and_process_jobs():
         global retry_count
 
-        while retry_count < 3:
+        while retry_count < 5:
             job_ids = get_job_ids(keyword)
             if job_ids:
                 send_log(f"Đã lấy được {len(job_ids)} job id")
@@ -202,7 +203,7 @@ def search():
                 time.sleep(1)
 
         if not job_ids:
-            send_log("Không tìm thấy công việc nào sau 3 lần thử.")
+            send_log("Không tìm thấy công việc nào sau 5 lần thử.")
             return
 
         vn_timezone = pytz.timezone('Asia/Ho_Chi_Minh')
