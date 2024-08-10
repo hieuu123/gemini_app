@@ -1,5 +1,6 @@
-# Hiển thị các job_id mới + cũ, update posted_time và Number of Applicants
-
+import os
+import time
+from dotenv import load_dotenv
 from flask import Flask, request, render_template, Response, jsonify
 import requests
 from bs4 import BeautifulSoup
@@ -7,20 +8,61 @@ import pymysql
 import re
 import datetime
 import pytz
-import time
 import threading
 import json
+import google.generativeai as genai
+import markdown2
 
 app = Flask(__name__)
 
-log_messages = []  # Danh sách lưu trữ log
-job_messages = []  # Danh sách lưu trữ các công việc mới
-reset_flag = threading.Event()  # Cờ để reset quá trình xử lý
-processing_thread = None  # Biến để theo dõi luồng xử lý hiện tại
-retry_count = 0  # Biến đếm số lần retry
-displayed_job_ids = set()  # Tập hợp lưu trữ các job_id đã được hiển thị
+# Load environment variables from .env
+load_dotenv()
 
-# Kết nối cơ sở dữ liệu MySQL
+api_key = os.getenv("API_KEY")
+genai.configure(api_key=api_key)
+
+generation_config = {
+    "temperature": 1,
+    "top_p": 0.95,
+    "top_k": 64,
+    "max_output_tokens": 8192,
+    "response_mime_type": "text/plain",
+}
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    generation_config=generation_config,
+    system_instruction="You are a helpful assistant. Your name's Jack.",
+)
+
+# Load content from bio.txt
+with open("bio.txt", "r", encoding="utf-8") as file:
+    file_content = file.read()
+
+# Upload bio.txt file to Gemini API
+uploaded_file = genai.upload_file(path="bio.txt", display_name="bio.txt")
+
+chat = model.start_chat(
+  history=[
+    {
+      "role": "user",
+      "parts": ["My name's Hieu"],
+    },
+    {
+      "role": "user",
+      "parts": [file_content],
+    },
+  ]
+)
+
+log_messages = []  # Log storage
+job_messages = []  # Job storage
+reset_flag = threading.Event()  # Flag to reset processing
+processing_thread = None  # Current processing thread
+retry_count = 0  # Retry count
+displayed_job_ids = set()  # Set of displayed job_ids
+
+# Database connection
 def connect_db():
     return pymysql.connect(
         host='localhost',
@@ -31,19 +73,19 @@ def connect_db():
         cursorclass=pymysql.cursors.DictCursor
     )
 
-# Hàm gửi log tới client
+# Send log to client
 def send_log(message):
-    print(message)  # In ra terminal để kiểm tra
-    log_messages.append(message)  # Lưu log vào danh sách
+    print(message)  # Print to terminal for checking
+    log_messages.append(message)  # Store log in the list
 
-# Hàm gửi thông tin công việc mới tới client
+# Send new job info to client
 def send_job(job_details):
     job_id = job_details.get('job_id')
     if job_id and job_id not in displayed_job_ids:
-        displayed_job_ids.add(job_id)  # Thêm job_id vào tập hợp đã hiển thị
+        displayed_job_ids.add(job_id)
         job_messages.append(job_details)
 
-# Hàm lấy job_id từ từ khóa
+# Fetch job_ids based on keyword
 def get_job_ids(keyword):
     base_url = "https://www.linkedin.com/jobs/search/"
     params = {
@@ -58,7 +100,7 @@ def get_job_ids(keyword):
         'position': '1',
         'pageNum': '0'
     }
-    job_ids = set()  # Sử dụng tập hợp để đảm bảo tính duy nhất
+    job_ids = set()
     page = 0
 
     while True:
@@ -69,7 +111,7 @@ def get_job_ids(keyword):
         response = requests.get(base_url, params=params)
 
         if response.status_code != 200:
-            send_log(f"Không thể truy cập trang web, mã trạng thái: {response.status_code}")
+            send_log(f"Cannot access the website, status code: {response.status_code}")
             break
         
         html_content = response.text
@@ -84,13 +126,13 @@ def get_job_ids(keyword):
             entity_urn = job_card.get('data-entity-urn')
             if entity_urn and 'jobPosting' in entity_urn:
                 job_id = entity_urn.split(':')[-1]
-                job_ids.add(job_id)  # Thêm vào tập hợp để đảm bảo tính duy nhất
+                job_ids.add(job_id)
         
         page += 1
 
-    return list(job_ids)  # Chuyển đổi tập hợp thành danh sách
+    return list(job_ids)
 
-# Hàm lấy thông tin chi tiết của công việc
+# Fetch job details by job_id
 def get_job_details(job_id):
     if reset_flag.is_set():
         return None
@@ -107,17 +149,16 @@ def get_job_details(job_id):
         title = soup.find('h1', class_='top-card-layout__title')
         job_details['title'] = title.get_text(strip=True) if title else 'None'
 
-        # Nếu title là None, bỏ qua job này
         if job_details['title'] == 'None':
             return None
 
-        job_details['url'] = url  # Đảm bảo url được thêm vào job_details
+        job_details['url'] = url
 
         company_name = soup.find('a', class_='topcard__org-name-link')
-        job_details['company_name'] = company_name.get_text(strip=True) if company_name else 'Không tìm thấy tên công ty'
+        job_details['company_name'] = company_name.get_text(strip=True) if company_name else 'Not found'
 
         posted_time = soup.find('span', class_='posted-time-ago__text')
-        job_details['posted_time'] = posted_time.get_text(strip=True) if posted_time else 'Không tìm thấy thời gian đăng tin'
+        job_details['posted_time'] = posted_time.get_text(strip=True) if posted_time else 'Not found'
 
         num_applicants = soup.find('span', class_='num-applicants__caption')
         if num_applicants:
@@ -128,25 +169,23 @@ def get_job_details(job_id):
             job_details['num_applicants'] = '<25'
 
         criteria_texts = soup.find_all('span', class_='description__job-criteria-text')
-        job_details['seniority_level'] = criteria_texts[0].get_text(strip=True) if len(criteria_texts) > 0 else 'Không tìm thấy seniority level'
-        job_details['employment_type'] = criteria_texts[1].get_text(strip=True) if len(criteria_texts) > 1 else 'Không tìm thấy employment type'
-        job_details['job_function'] = criteria_texts[2].get_text(strip=True) if len(criteria_texts) > 2 else 'Không tìm thấy job function'
-        job_details['industries'] = criteria_texts[3].get_text(strip=True) if len(criteria_texts) > 3 else 'Không tìm thấy industries'
+        job_details['seniority_level'] = criteria_texts[0].get_text(strip=True) if len(criteria_texts) > 0 else 'Not found'
+        job_details['employment_type'] = criteria_texts[1].get_text(strip=True) if len(criteria_texts) > 1 else 'Not found'
+        job_details['job_function'] = criteria_texts[2].get_text(strip=True) if len(criteria_texts) > 2 else 'Not found'
+        job_details['industries'] = criteria_texts[3].get_text(strip=True) if len(criteria_texts) > 3 else 'Not found'
 
         place = soup.find('span', class_='topcard__flavor--bullet')
         job_details['place'] = place.get_text(strip=True) if place else 'None'
 
-        # Lấy tất cả nội dung HTML bên trong thẻ show_more_less_div
-        job_details['job_description'] = str(show_more_less_div) if show_more_less_div else 'Không tìm thấy mô tả công việc'
+        job_details['job_description'] = str(show_more_less_div) if show_more_less_div else 'Not found'
 
     return job_details
 
-# Lưu thông tin công việc vào cơ sở dữ liệu
+# Save job details to database
 def save_job_to_db(job_details, keyword):
     connection = connect_db()
     try:
         with connection.cursor() as cursor:
-            # Kiểm tra nếu job_id đã tồn tại, xóa hàng cũ
             check_sql = "SELECT job_id FROM jobs WHERE job_id=%s"
             cursor.execute(check_sql, (job_details.get('job_id'),))
             result = cursor.fetchone()
@@ -175,11 +214,11 @@ def save_job_to_db(job_details, keyword):
                 keyword
             ))
         connection.commit()
-        send_job(job_details)  # Gửi thông tin công việc mới tới client
+        send_job(job_details)
     finally:
         connection.close()
 
-# Lấy các công việc từ cơ sở dữ liệu có cùng từ khóa (không phân biệt chữ hoa chữ thường)
+# Fetch existing jobs from database based on keyword
 def get_existing_job_ids_from_db(keyword):
     connection = connect_db()
     try:
@@ -201,17 +240,14 @@ def search():
     data = request.get_json()
     keyword = data.get('keyword')
 
-    # Dừng quá trình xử lý từ khóa hiện tại nếu có
     reset_flag.set()
     if processing_thread is not None:
-        processing_thread.join()  # Chờ cho luồng xử lý hiện tại kết thúc
+        processing_thread.join()
 
-    reset_flag.clear()  # Xóa cờ reset
-
-    # Reset log và công việc hiện tại
+    reset_flag.clear()
     log_messages.clear()
-    retry_count = 0  # Reset biến đếm khi bắt đầu tìm kiếm mới
-    displayed_job_ids.clear()  # Reset danh sách các job_id đã hiển thị
+    retry_count = 0
+    displayed_job_ids.clear()
 
     def search_and_process_jobs():
         global retry_count
@@ -219,30 +255,28 @@ def search():
         while retry_count < 5:
             job_ids = get_job_ids(keyword)
             if job_ids:
-                send_log(f"Đã lấy được {len(job_ids)} job id")
+                send_log(f"Found {len(job_ids)} job ids")
                 break
             else:
                 retry_count += 1
-                send_log(f"Không tìm thấy job id nào, thử lại lần {retry_count}")
+                send_log(f"No job ids found, retrying {retry_count}")
                 time.sleep(1)
 
         if not job_ids:
-            send_log("Không tìm thấy công việc nào sau 5 lần thử.")
+            send_log("No jobs found after 5 attempts.")
             return
 
         vn_timezone = pytz.timezone('Asia/Ho_Chi_Minh')
         submit_time = datetime.datetime.now(vn_timezone).strftime('%Y-%m-%d %H:%M')
 
-        # Bắt đầu xử lý job IDs trong một luồng riêng
         def process_jobs():
             processed_job_ids = set()
 
-            # Xử lý các job mới lấy được
             for index, job_id in enumerate(job_ids, start=1):
                 if reset_flag.is_set():
-                    send_log("Quá trình xử lý đã bị hủy.")
+                    send_log("Processing canceled.")
                     break
-                send_log(f"Đang xử lý job id {index}/{len(job_ids)}: {job_id}")
+                send_log(f"Processing job id {index}/{len(job_ids)}: {job_id}")
                 job_details = get_job_details(job_id)
                 if job_details:
                     job_details['job_id'] = job_id
@@ -250,18 +284,17 @@ def search():
                     save_job_to_db(job_details, keyword)
                     processed_job_ids.add(job_id)
 
-            send_log("Đã lưu thông tin các công việc vào cơ sở dữ liệu.")
+            send_log("Saved new jobs to the database.")
 
-            # Lấy các job đã có trong cơ sở dữ liệu với cùng keyword và cập nhật thông tin
             existing_job_ids = get_existing_job_ids_from_db(keyword)
             for job_id in existing_job_ids:
                 if job_id not in processed_job_ids:
                     job_details = get_job_details(job_id)
                     if job_details:
                         job_details['job_id'] = job_id
-                        job_details['submit_time'] = submit_time  # Cập nhật thời gian lưu mới
+                        job_details['submit_time'] = submit_time
                         save_job_to_db(job_details, keyword)
-                        send_job(job_details)  # Hiển thị ngay lập tức
+                        send_job(job_details)
                         processed_job_ids.add(job_id)
 
         process_jobs()
@@ -269,7 +302,14 @@ def search():
     processing_thread = threading.Thread(target=search_and_process_jobs)
     processing_thread.start()
 
-    return jsonify({"message": "Đã bắt đầu xử lý các công việc."})
+    return jsonify({"message": "Job processing started."})
+
+@app.route('/send_message', methods=["POST"])
+def send_message():
+    user_input = request.json.get("message")
+    response = chat.send_message([user_input])
+    markdown_response = markdown2.markdown(response.text)
+    return jsonify({"response": markdown_response})
 
 @app.route('/stream')
 def stream():
@@ -281,7 +321,7 @@ def stream():
             if job_messages:
                 job = job_messages.pop(0)
                 yield f'data: new_job:{json.dumps(job, default=str)}\n\n'
-            time.sleep(0.1)  # Giảm thời gian chờ xuống 0.1 giây
+            time.sleep(0.1)
     return Response(event_stream(), content_type='text/event-stream')
 
 @app.route('/job/<job_id>')
