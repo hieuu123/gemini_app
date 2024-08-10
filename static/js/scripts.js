@@ -2,13 +2,12 @@ document.addEventListener('DOMContentLoaded', (event) => {
     var eventSource = new EventSource('/stream');
     var totalJobs = 0;
     var currentJob = 0;
-    var retryCount = 0;  // Biến đếm số lần retry
+    var retryCount = 0;
 
     eventSource.onmessage = function(event) {
         var log = document.getElementById('log');
         var newLog = document.createElement('p');
 
-        // Handle new job data
         if (event.data.startsWith("new_job:")) {
             var job = JSON.parse(event.data.replace("new_job:", ""));
             var jobList = document.getElementById('job-list');
@@ -21,10 +20,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 selectJobItem(jobItem);
             };
             jobList.appendChild(jobItem);
-        }
-
-        // Handle log messages
-        else {
+        } else {
             newLog.textContent = event.data;
             log.appendChild(newLog);
             log.scrollTop = log.scrollHeight;
@@ -33,7 +29,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
     var form = document.getElementById('job-form');
     form.onsubmit = function(e) {
-        if (e) e.preventDefault(); // Kiểm tra xem có sự kiện e hay không
+        if (e) e.preventDefault();
         var keyword = form.querySelector('input[name="keyword"]').value;
         fetch('/search', {
             method: 'POST',
@@ -52,7 +48,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
             jobDetails.innerHTML = '';
             currentJob = 0;
             totalJobs = 0;
-            retryCount = 0;  // Reset biến đếm khi gửi yêu cầu mới
+            retryCount = 0;
+
+            // Mở chatbot và hiển thị lời chào
+            toggleChatbox();  // Mở chatbot nếu chưa mở
+            appendMessage('<div style="margin-bottom:22px;">Chatbot', 'Hello there!</div>');
         });
     };
 
@@ -82,7 +82,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
             console.error('Error fetching job details:', error);
         });
     }
-       
 
     function selectJobItem(jobItem) {
         var jobItems = document.querySelectorAll('.job-item');

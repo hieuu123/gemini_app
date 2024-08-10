@@ -40,7 +40,7 @@ with open("bio.txt", "r", encoding="utf-8") as file:
     file_content = file.read()
 
 # Upload bio.txt file to Gemini API
-uploaded_file = genai.upload_file(path="bio.txt", display_name="bio.txt")
+# uploaded_file = genai.upload_file(path="bio.txt", display_name="bio.txt")
 
 chat = model.start_chat(
   history=[
@@ -50,7 +50,7 @@ chat = model.start_chat(
     },
     {
       "role": "user",
-      "parts": [file_content],
+      "parts": file_content,
     },
   ]
 )
