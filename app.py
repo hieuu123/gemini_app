@@ -1,5 +1,4 @@
-# Không hiển thị thông tin job + xử lí duy nhất job 1 thời điểm
-# Update số lần retry thành 5
+# Hiển thị các job_id mới + cũ, update posted_time và Number of Applicants
 
 from flask import Flask, request, render_template, Response, jsonify
 import requests
@@ -15,9 +14,11 @@ import json
 app = Flask(__name__)
 
 log_messages = []  # Danh sách lưu trữ log
+job_messages = []  # Danh sách lưu trữ các công việc mới
 reset_flag = threading.Event()  # Cờ để reset quá trình xử lý
 processing_thread = None  # Biến để theo dõi luồng xử lý hiện tại
 retry_count = 0  # Biến đếm số lần retry
+displayed_job_ids = set()  # Tập hợp lưu trữ các job_id đã được hiển thị
 
 # Kết nối cơ sở dữ liệu MySQL
 def connect_db():
@@ -34,6 +35,13 @@ def connect_db():
 def send_log(message):
     print(message)  # In ra terminal để kiểm tra
     log_messages.append(message)  # Lưu log vào danh sách
+
+# Hàm gửi thông tin công việc mới tới client
+def send_job(job_details):
+    job_id = job_details.get('job_id')
+    if job_id and job_id not in displayed_job_ids:
+        displayed_job_ids.add(job_id)  # Thêm job_id vào tập hợp đã hiển thị
+        job_messages.append(job_details)
 
 # Hàm lấy job_id từ từ khóa
 def get_job_ids(keyword):
@@ -103,6 +111,8 @@ def get_job_details(job_id):
         if job_details['title'] == 'None':
             return None
 
+        job_details['url'] = url  # Đảm bảo url được thêm vào job_details
+
         company_name = soup.find('a', class_='topcard__org-name-link')
         job_details['company_name'] = company_name.get_text(strip=True) if company_name else 'Không tìm thấy tên công ty'
 
@@ -165,6 +175,19 @@ def save_job_to_db(job_details, keyword):
                 keyword
             ))
         connection.commit()
+        send_job(job_details)  # Gửi thông tin công việc mới tới client
+    finally:
+        connection.close()
+
+# Lấy các công việc từ cơ sở dữ liệu có cùng từ khóa (không phân biệt chữ hoa chữ thường)
+def get_existing_job_ids_from_db(keyword):
+    connection = connect_db()
+    try:
+        with connection.cursor() as cursor:
+            sql = "SELECT job_id FROM jobs WHERE LOWER(keyword) = LOWER(%s)"
+            cursor.execute(sql, (keyword,))
+            job_ids = [job['job_id'] for job in cursor.fetchall()]
+        return job_ids
     finally:
         connection.close()
 
@@ -174,7 +197,7 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def search():
-    global processing_thread, retry_count
+    global processing_thread, retry_count, displayed_job_ids
     data = request.get_json()
     keyword = data.get('keyword')
 
@@ -188,6 +211,7 @@ def search():
     # Reset log và công việc hiện tại
     log_messages.clear()
     retry_count = 0  # Reset biến đếm khi bắt đầu tìm kiếm mới
+    displayed_job_ids.clear()  # Reset danh sách các job_id đã hiển thị
 
     def search_and_process_jobs():
         global retry_count
@@ -211,6 +235,9 @@ def search():
 
         # Bắt đầu xử lý job IDs trong một luồng riêng
         def process_jobs():
+            processed_job_ids = set()
+
+            # Xử lý các job mới lấy được
             for index, job_id in enumerate(job_ids, start=1):
                 if reset_flag.is_set():
                     send_log("Quá trình xử lý đã bị hủy.")
@@ -221,7 +248,21 @@ def search():
                     job_details['job_id'] = job_id
                     job_details['submit_time'] = submit_time
                     save_job_to_db(job_details, keyword)
+                    processed_job_ids.add(job_id)
+
             send_log("Đã lưu thông tin các công việc vào cơ sở dữ liệu.")
+
+            # Lấy các job đã có trong cơ sở dữ liệu với cùng keyword và cập nhật thông tin
+            existing_job_ids = get_existing_job_ids_from_db(keyword)
+            for job_id in existing_job_ids:
+                if job_id not in processed_job_ids:
+                    job_details = get_job_details(job_id)
+                    if job_details:
+                        job_details['job_id'] = job_id
+                        job_details['submit_time'] = submit_time  # Cập nhật thời gian lưu mới
+                        save_job_to_db(job_details, keyword)
+                        send_job(job_details)  # Hiển thị ngay lập tức
+                        processed_job_ids.add(job_id)
 
         process_jobs()
 
@@ -237,8 +278,23 @@ def stream():
             if log_messages:
                 message = log_messages.pop(0)
                 yield f'data: {message}\n\n'
+            if job_messages:
+                job = job_messages.pop(0)
+                yield f'data: new_job:{json.dumps(job, default=str)}\n\n'
             time.sleep(0.1)  # Giảm thời gian chờ xuống 0.1 giây
     return Response(event_stream(), content_type='text/event-stream')
 
+@app.route('/job/<job_id>')
+def job(job_id):
+    connection = connect_db()
+    try:
+        with connection.cursor() as cursor:
+            sql = "SELECT * FROM jobs WHERE job_id=%s"
+            cursor.execute(sql, (job_id,))
+            job = cursor.fetchone()
+        return jsonify(job)
+    finally:
+        connection.close()
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False, use_reloader=False)
