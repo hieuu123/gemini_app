@@ -1,7 +1,7 @@
 import os
 import time
 from dotenv import load_dotenv
-from flask import Flask, request, render_template, Response, jsonify
+from flask import Flask, request, render_template, Response, jsonify, send_file
 import requests
 from bs4 import BeautifulSoup
 import pymysql
@@ -35,12 +35,42 @@ model = genai.GenerativeModel(
     system_instruction="You are a helpful assistant. Your name's Jack.",
 )
 
-# Load content from bio.txt
-with open("bio.txt", "r", encoding="utf-8") as file:
-    file_content = file.read()
+# Function to export jobs to a JSON file based on the keyword
+def export_jobs_to_file(keyword):
+    connection = connect_db()
+    try:
+        with connection.cursor() as cursor:
+            # Select jobs based on keyword
+            sql = "SELECT * FROM jobs WHERE LOWER(keyword) = LOWER(%s)"
+            cursor.execute(sql, (keyword,))
+            jobs = cursor.fetchall()
 
-# Upload bio.txt file to Gemini API
-# uploaded_file = genai.upload_file(path="bio.txt", display_name="bio.txt")
+            # Define the path for the knowledge file
+            file_path = "knowledge.json"
+
+            # Convert the datetime objects to strings
+            for job in jobs:
+                for key, value in job.items():
+                    if isinstance(value, datetime.datetime):
+                        job[key] = value.strftime('%Y-%m-%d %H:%M:%S')
+
+            # Write the jobs to the knowledge.json file
+            with open(file_path, "w", encoding="utf-8") as file:
+                json.dump(jobs, file, ensure_ascii=False, indent=4)
+    finally:
+        connection.close()
+
+# Read the content from knowledge.json if it exists
+def read_knowledge_file():
+    file_path = "knowledge.json"
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as file:
+            file_content = file.read()
+        return file_content
+    return ""
+
+# Initialize the chat with the content of the knowledge.json file if it exists
+file_content = read_knowledge_file()
 
 chat = model.start_chat(
   history=[
@@ -252,6 +282,28 @@ def search():
     def search_and_process_jobs():
         global retry_count
 
+        # Export jobs based on the keyword to 'knowledge.json'
+        export_jobs_to_file(keyword)
+
+        # Reload the content of the knowledge file after export
+        global file_content
+        file_content = read_knowledge_file()
+
+        # Reset the chat with the new knowledge content
+        global chat
+        chat = model.start_chat(
+            history=[
+                {
+                    "role": "user",
+                    "parts": ["My name's Hieu"],
+                },
+                {
+                    "role": "user",
+                    "parts": file_content,
+                },
+            ]
+        )
+
         while retry_count < 5:
             job_ids = get_job_ids(keyword)
             if job_ids:
@@ -303,6 +355,14 @@ def search():
     processing_thread.start()
 
     return jsonify({"message": "Job processing started."})
+
+@app.route('/download_knowledge')
+def download_knowledge():
+    file_path = "knowledge.json"
+    if os.path.exists(file_path):
+        return send_file(file_path, as_attachment=True)
+    else:
+        return jsonify({"message": "File not found"}), 404
 
 @app.route('/send_message', methods=["POST"])
 def send_message():

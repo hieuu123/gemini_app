@@ -67,11 +67,11 @@
     </style>
 </head>
 <body>
-    <h1>Job Search and Chatbot</h1>
+    <h1>LinkedIn Remote Job Search Helper</h1>
 
     <form id="job-form">
-        Từ khóa công việc: <input type="text" name="keyword">
-        <input type="submit" value="Tìm kiếm">
+        Keyword: <input type="text" name="keyword">
+        <input type="submit" value="Search">
     </form>
     <br>
 
@@ -91,8 +91,8 @@
         </div>
         <div id="chatbox"></div>
         <div id="input-container">
-            <input type="text" id="input" placeholder="Nhập tin nhắn..." onkeydown="if (event.key === 'Enter') sendMessage()">
-            <button id="send-btn" onclick="sendMessage()">Gửi</button>
+            <input type="text" id="input" placeholder="Enter message..." onkeydown="if (event.key === 'Enter') sendMessage()">
+            <button id="send-btn" onclick="sendMessage()">Send</button>
         </div>
     </div>
 
