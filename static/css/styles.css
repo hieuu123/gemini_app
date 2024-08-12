@@ -45,7 +45,7 @@
 
 .job-item {
     border-bottom: 1px solid #ddd;
-    padding: 10px 0;
+    padding: 10px;
     cursor: pointer;
 }
 
@@ -56,4 +56,151 @@
 .job-item.selected {
     background-color: #b6b2b2;
     color: black;
+}
+
+/* Chatbot container at bottom right */
+#chatbox-container {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 350px;
+    border: 1px solid #ccc;
+    border-radius: 7px 7px 5px 5px;
+    background-color: white;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    display: none;
+    /* Initially hidden */
+    flex-direction: column;
+}
+
+#chatbox-header {
+    /* background-color: #007bff; */
+    background-image: linear-gradient(to right, #8963b3, #007bff);
+    color: white;
+    padding: 10px;
+    cursor: pointer;
+    text-align: center;
+    border-radius: 5px 5px 0px 0px;
+}
+
+#chatbox {
+    height: 300px;
+    overflow-y: auto;
+    padding: 10px;
+    border-top: 1px solid #ccc;
+}
+
+#input-container {
+    display: flex;
+    padding: 10px;
+    border-top: 1px solid #ccc;
+}
+
+#input {
+    flex: 1;
+    padding: 5px;
+    border-radius: 5px;
+    border: 1px solid rgb(99, 98, 98);
+}
+
+#send-btn {
+    margin-left: 5px;
+    border-radius: 5px;
+    border: 1px solid rgb(99, 98, 98);
+
+}
+
+/* Icon to toggle chatbox */
+#chatbox-toggle {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    /* background-color: #007bff; */
+    background-image: linear-gradient(to right, #8963b3, #007bff);
+    color: white;
+    border: none;
+    padding: 7px 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 24px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.header-div {
+    /* margin-top: 5px; */
+    margin-left: 45px;
+    margin-bottom: 10px;
+}
+
+.header-div h2 {
+    display: inline-block;
+    margin-top: 10px;
+    margin-right: 10px;
+}
+
+.header-div img {
+    position: absolute;
+    top: 12px;
+    /* left: 320px; */
+}
+
+#job-form {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fa-search {
+    color: white;
+}
+
+#job-form button {
+    /* background-color: #007bff; */
+    background-image: linear-gradient(to right, #8963b3, #007bff);
+    margin-left: 5px;
+    border: 0px;
+    padding: 6px 10px;
+    border-radius: 5px;
+}
+
+#job-form input {
+    height: 36px;
+    width: 350px;
+    border-radius: 0px 5px 5px 0px;
+    border: 1px solid #ddd;
+    border-left: 0px;
+    padding: 3px;
+    padding-left: 7px;
+}
+
+
+#job-form span {
+    height: 36px;
+    /* background-color: #007bff; */
+    background-image: linear-gradient(to right, #8963b3, #007bff);
+    border-radius: 5px 0px 0px 5px;
+    /* border: 1px solid #007bff; */
+    border: none;
+    padding: 10px;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jobs-container {
+    max-width: 95%;
+    padding: 0;
+    box-shadow: 5px 5px 35px 3px rgb(105, 103, 103);
+}
+
+#btn-details {
+    margin: 10px 0px;
+    background-image: linear-gradient(to right, #8963b3, #007bff);
+    border: none;
+}
+
+#btn-details a {
+    color: white;
+    text-decoration: none;
 }
