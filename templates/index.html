@@ -137,7 +137,7 @@
         }
 
         function showThinking() {
-            thinkingMessage = appendMessage('Chatbot', '<i>Chatbot is thinking<span id="dots">...</span></i>', true);
+            thinkingMessage = appendMessage('Chatbot', '<i>Chatbot is thinking<span id="dots">...</span></i><br><br>', true);
             let dots = document.getElementById('dots');
             dotInterval = setInterval(() => {
                 if (dots.innerHTML.length >= 3) {

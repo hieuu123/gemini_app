@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
     var currentJob = 0;
     var retryCount = 0;
     var ellipsisInterval; // Biến để lưu khoảng thời gian của hiệu ứng
+    var currentChatIndex = 0; // Biến để theo dõi chỉ số chat hiện tại
 
     eventSource.onmessage = function(event) {
         var log = document.getElementById('log');
@@ -56,7 +57,18 @@ document.addEventListener('DOMContentLoaded', (event) => {
             if (chatbox.style.display === 'none' || chatbox.style.display === '') {
                 toggleChatbox();  // Mở chatbot nếu chưa mở
             }
-            appendMessage('<div style="margin-bottom:22px;">Chatbot', '<i id="processing-message">Processing your request...</i></div>');
+
+            // Gửi tin nhắn "Processing your request..."
+            appendMessage('Chatbot', '<i id="processing-message">Processing your request...</i><br><br>');
+
+            // Nếu đang làm việc với chat1, gửi thêm tin nhắn "Hello there!"
+            if (currentChatIndex === 0) {
+                setTimeout(() => {
+                    appendMessage('Chatbot', 'Hello! I’m Jack, your job search assistant. Tell me about your ideal job—things like salary, job type (full-time, part-time, freelance), working hours, location, and benefits. The more details you provide, the better I can help you find the right match!<br><br>');
+                }, 1000);
+            }
+
+            currentChatIndex++; // Tăng chỉ số chat hiện tại
         });
     };
 

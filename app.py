@@ -34,7 +34,7 @@ generation_config = {
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     generation_config=generation_config,
-    system_instruction="You are a helpful assistant. Your name's Jack.",
+    system_instruction="You're Jack, a job search assistant. Provide relevant job recommendations based on user preferences (salary, job type, hours, etc.) without repeatedly asking for details. Use the latest knowledge.json data, updated three times per session. Communicate clearly and concisely, keeping responses brief yet informative. When recommending a job, include a brief introduction and a link: <a href='https://www.linkedin.com/jobs/view/job_id' target='_blank'>See details</a>. Ideally, suggest 3-5 jobs per consultation.",
 )
 
 # Global variable to store chat sessions
@@ -88,8 +88,8 @@ def export_and_update_chat():
     chat_sessions[chat_name] = model.start_chat(
         history=[
             {
-                "role": "user",
-                "parts": "Hello",
+                "role": "model",
+                "parts": "Hello! I’m Jack, your job search assistant. Tell me about your ideal job—things like salary, job type (full-time, part-time, freelance), working hours, location, and benefits. The more details you provide, the better I can help you find the right match!",
             }
         ]
     )
@@ -126,11 +126,11 @@ def continue_chat_session():
             history=chat_history + [
                 {
                     "role": "model",
-                    "parts": [file_content],
+                    "parts": "knowledge.json:",
                 },
                 {
-                    "role": "user",
-                    "parts": "My name's Hieu",
+                    "role": "model",
+                    "parts": [file_content],
                 },
             ]
         )
