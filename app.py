@@ -1,3 +1,5 @@
+# chia chat thành phiên làm việc theo keyword, có lịch sử chat riêng
+
 import os
 import time
 from dotenv import load_dotenv
@@ -35,6 +37,10 @@ model = genai.GenerativeModel(
     system_instruction="You are a helpful assistant. Your name's Jack.",
 )
 
+# Global variable to store chat sessions
+chat_sessions = {}
+current_chat_index = 0  # Index for naming chat sessions
+
 # Function to export jobs to a JSON file based on the keyword
 def export_jobs_to_file(keyword):
     connection = connect_db()
@@ -66,24 +72,74 @@ def read_knowledge_file():
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as file:
             file_content = file.read()
+        print(f"Loaded knowledge file: {file_content[:100]}...")  # Log for checking
         return file_content
     return ""
 
-# Initialize the chat with the content of the knowledge.json file if it exists
-file_content = read_knowledge_file()
+# Function to export and update the chat content
+def export_and_update_chat():
+    global chat_sessions, current_chat_index
 
-chat = model.start_chat(
-  history=[
-    {
-      "role": "user",
-      "parts": ["My name's Hieu"],
-    },
-    {
-      "role": "user",
-      "parts": file_content,
-    },
-  ]
-)
+    # Tạo tên cho chat session mới
+    chat_name = f"chat{current_chat_index}"
+    print(f"Creating new chat session: {chat_name}")
+
+    # Tạo chat session mới
+    chat_sessions[chat_name] = model.start_chat(
+        history=[
+            {
+                "role": "user",
+                "parts": "Hello",
+            }
+        ]
+    )
+    
+    current_chat_index += 1  # Tăng chỉ số cho phiên chat tiếp theo
+
+    # Log thông tin
+    print(f"Chat session {chat_name} created successfully.")
+    # print(f"Current chat index: {current_chat_index}")
+
+# Function to continue an existing chat session
+def continue_chat_session():
+    global chat_sessions, current_chat_index
+
+    # Sử dụng phiên chat hiện tại
+    chat_name = f"chat{current_chat_index - 1}"
+    print(f"Continuing chat session: {chat_name}")
+
+    if chat_name in chat_sessions:
+        # Lưu lại toàn bộ lịch sử chat hiện tại, không bao gồm knowledge cũ
+        chat_history = chat_sessions[chat_name].history
+        chat_history = [
+            {
+                "role": entry.role,
+                "parts": entry.parts
+            } for entry in chat_history
+        ]
+
+        # Làm mới nội dung file_content
+        file_content = read_knowledge_file()
+
+        # Tạo lại chat với nội dung knowledge mới và lịch sử chat cũ
+        chat_sessions[chat_name] = model.start_chat(
+            history=chat_history + [
+                {
+                    "role": "model",
+                    "parts": [file_content],
+                },
+                {
+                    "role": "user",
+                    "parts": "My name's Hieu",
+                },
+            ]
+        )
+        print(f"Updated chat session {chat_name} with new file_content.")
+    else:
+        print(f"Chat session {chat_name} not found.")
+
+# Khởi tạo chat với nội dung knowledge hiện tại (nếu có) khi trang được tải
+export_and_update_chat()
 
 log_messages = []  # Log storage
 job_messages = []  # Job storage
@@ -266,7 +322,7 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def search():
-    global processing_thread, retry_count, displayed_job_ids
+    global processing_thread, retry_count, displayed_job_ids, current_keyword
     data = request.get_json()
     keyword = data.get('keyword')
 
@@ -279,32 +335,18 @@ def search():
     retry_count = 0
     displayed_job_ids.clear()
 
+    # Reset chat history khi tìm kiếm mới
+    current_keyword = keyword
+    export_and_update_chat()
+
     def search_and_process_jobs():
         global retry_count
 
-        # Export jobs based on the keyword to 'knowledge.json'
+        # Export jobs based on the keyword and update the chatbot content
         export_jobs_to_file(keyword)
+        continue_chat_session()
 
-        # Reload the content of the knowledge file after export
-        global file_content
-        file_content = read_knowledge_file()
-
-        # Reset the chat with the new knowledge content
-        global chat
-        chat = model.start_chat(
-            history=[
-                {
-                    "role": "user",
-                    "parts": ["My name's Hieu"],
-                },
-                {
-                    "role": "user",
-                    "parts": file_content,
-                },
-            ]
-        )
-
-        while retry_count < 5:
+        while retry_count < 10:
             job_ids = get_job_ids(keyword)
             if job_ids:
                 send_log(f"Found {len(job_ids)} job ids")
@@ -312,10 +354,10 @@ def search():
             else:
                 retry_count += 1
                 send_log(f"No job ids found, retrying {retry_count}")
-                time.sleep(1)
+                # time.sleep(1)
 
         if not job_ids:
-            send_log("No jobs found after 5 attempts.")
+            send_log("No jobs found after 10 attempts.")
             return
 
         vn_timezone = pytz.timezone('Asia/Ho_Chi_Minh')
@@ -338,6 +380,10 @@ def search():
 
             send_log("Saved new jobs to the database.")
 
+            # Export and update the chatbot after processing new jobs
+            export_jobs_to_file(keyword)
+            continue_chat_session()
+
             existing_job_ids = get_existing_job_ids_from_db(keyword)
             for job_id in existing_job_ids:
                 if job_id not in processed_job_ids:
@@ -348,6 +394,10 @@ def search():
                         save_job_to_db(job_details, keyword)
                         send_job(job_details)
                         processed_job_ids.add(job_id)
+
+            # Export and update the chatbot after processing all jobs
+            export_jobs_to_file(keyword)
+            continue_chat_session()
 
         process_jobs()
 
@@ -367,9 +417,14 @@ def download_knowledge():
 @app.route('/send_message', methods=["POST"])
 def send_message():
     user_input = request.json.get("message")
-    response = chat.send_message([user_input])
-    markdown_response = markdown2.markdown(response.text)
-    return jsonify({"response": markdown_response})
+    chat_name = f"chat{current_chat_index - 1}"
+
+    if chat_name in chat_sessions:
+        response = chat_sessions[chat_name].send_message([user_input])
+        markdown_response = markdown2.markdown(response.text)
+        return jsonify({"response": markdown_response})
+    else:
+        return jsonify({"error": "Chat session not found."}), 404
 
 @app.route('/stream')
 def stream():

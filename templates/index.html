@@ -28,7 +28,6 @@
         }
 
         #chatbox {
-            width: 100%;
             height: 300px;
             overflow-y: auto;
             padding: 10px;
@@ -86,8 +85,9 @@
 
     <!-- Chatbox Container -->
     <div id="chatbox-container">
-        <div id="chatbox-header" onclick="toggleChatbox()">
-            Chatbot - Jack
+        <div id="chatbox-header" onclick="toggleChatbox()" style="display: flex; justify-content: center; align-items: center; position: relative;">
+            <span style="flex: 1; text-align: center;">Chatbot - Jack</span>
+            <i class="fa fa-caret-down" style="position: absolute; right: 20px;"></i>
         </div>
         <div id="chatbox"></div>
         <div id="input-container">
@@ -137,7 +137,7 @@
         }
 
         function showThinking() {
-            thinkingMessage = appendMessage('Chatbot', 'Chatbot is thinking<span id="dots">...</span>', true);
+            thinkingMessage = appendMessage('Chatbot', '<i>Chatbot is thinking<span id="dots">...</span></i>', true);
             let dots = document.getElementById('dots');
             dotInterval = setInterval(() => {
                 if (dots.innerHTML.length >= 3) {
@@ -161,7 +161,7 @@
             const message = input.value;
             if (message.trim() === '') return;
 
-            appendMessage('Bạn', message);
+            appendMessage('You', message);
             input.value = '';
             showThinking();
 

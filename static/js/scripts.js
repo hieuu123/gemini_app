@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
     var totalJobs = 0;
     var currentJob = 0;
     var retryCount = 0;
+    var ellipsisInterval; // Biến để lưu khoảng thời gian của hiệu ứng
 
     eventSource.onmessage = function(event) {
         var log = document.getElementById('log');
@@ -50,13 +51,17 @@ document.addEventListener('DOMContentLoaded', (event) => {
             totalJobs = 0;
             retryCount = 0;
 
-            // Mở chatbot và hiển thị lời chào
-            toggleChatbox();  // Mở chatbot nếu chưa mở
-            appendMessage('<div style="margin-bottom:22px;">Chatbot', 'Hello there!</div>');
+            clearInterval(ellipsisInterval); // Dừng hiệu ứng trước khi bắt đầu một cái mới
+            var chatbox = document.getElementById('chatbox-container');
+            if (chatbox.style.display === 'none' || chatbox.style.display === '') {
+                toggleChatbox();  // Mở chatbot nếu chưa mở
+            }
+            appendMessage('<div style="margin-bottom:22px;">Chatbot', '<i id="processing-message">Processing your request...</i></div>');
         });
     };
 
     function fetchJobDetails(jobId) {
+        clearInterval(ellipsisInterval); // Dừng hiệu ứng chấm lửng khi công việc hoàn thành
         fetch(`/job/${jobId}`)
         .then(response => response.json())
         .then(data => {
